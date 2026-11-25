@@ -1,5 +1,7 @@
+import json
 import logging
 import smtplib
+import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
@@ -81,7 +83,16 @@ class EmailService:
         html_content: str,
         plain_text: str,
     ) -> bool:
-        """Gère l'envoi réel via SMTP ou le fallback sécurisé."""
+        """Gère l'envoi réel (API Brevo si configurée, sinon SMTP) ou le fallback sécurisé."""
+        # Render bloque les ports SMTP sortants : on privilégie l'API HTTPS de Brevo
+        if settings.BREVO_API_KEY:
+            return self._send_brevo(
+                recipient_email=recipient_email,
+                subject=subject,
+                html_content=html_content,
+                plain_text=plain_text,
+            )
+
         if not settings.SMTP_HOST:
             # Mode développement / tests : SMTP non configuré
             logger.info(
@@ -130,6 +141,46 @@ class EmailService:
                     server.quit()
                 except Exception:
                     pass  # la connexion est déjà fermée
+
+    def _send_brevo(
+        self,
+        *,
+        recipient_email: str,
+        subject: str,
+        html_content: str,
+        plain_text: str,
+    ) -> bool:
+        """Envoie l'e-mail via l'API HTTPS de Brevo (port 443, non bloqué par Render)."""
+        payload = json.dumps({
+            "sender": {"name": settings.SMTP_FROM_NAME, "email": settings.SMTP_FROM_EMAIL},
+            "to": [{"email": recipient_email}],
+            "subject": subject,
+            "htmlContent": html_content,
+            "textContent": plain_text,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.brevo.com/v3/smtp/email",
+            data=payload,
+            headers={
+                "api-key": settings.BREVO_API_KEY,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                logger.info("E-mail envoyé via Brevo à %s (HTTP %s)", recipient_email, resp.status)
+                return True
+        except Exception as e:
+            detail = ""
+            if hasattr(e, "read"):
+                try:
+                    detail = " | " + e.read().decode("utf-8", "replace")[:300]
+                except Exception:
+                    pass
+            logger.error("Échec Brevo pour %s : %s: %s%s", recipient_email, type(e).__name__, e, detail)
+            return False
 
     def _render_otp_template(
         self,
@@ -228,4 +279,3 @@ class EmailService:
 
 
 email_service = EmailService()
-
