@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     SMTP_TLS: bool = True
     # API Brevo (HTTPS) : à privilégier sur Render, qui bloque les ports SMTP sortants
     BREVO_API_KEY: Optional[str] = None
+    # Service d'envoi d'e-mails maison (Vercel) : URL de base + clé x-api-key
+    MAIL_SERVICE_URL: Optional[str] = None
+    MAIL_SERVICE_API_KEY: Optional[str] = None
 
     # Configuration OTP (One-Time Password)
     OTP_EXPIRE_MINUTES: int = 5
