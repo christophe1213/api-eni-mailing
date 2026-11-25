@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = "no-reply@eni.mg"
     SMTP_FROM_NAME: str = "ENI Mailing"
     SMTP_TLS: bool = True
+    # API Brevo (HTTPS) : à privilégier sur Render, qui bloque les ports SMTP sortants
+    BREVO_API_KEY: Optional[str] = None
 
     # Configuration OTP (One-Time Password)
     OTP_EXPIRE_MINUTES: int = 5
