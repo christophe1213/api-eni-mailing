@@ -8,6 +8,13 @@ from typing import Optional
 from app.core.config import settings
 
 logger = logging.getLogger("eni_mailing.email")
+# Sans handler dédié, les logger.info() de ce module sont invisibles (niveau racine = WARNING)
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 
 class EmailService:
