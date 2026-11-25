@@ -91,11 +91,22 @@ class EmailService:
         plain_text: str,
     ) -> bool:
         """Gère l'envoi réel (API Brevo si configurée, sinon SMTP) ou le fallback sécurisé."""
+        use_service = bool(settings.MAIL_SERVICE_URL and settings.MAIL_SERVICE_API_KEY)
         logger.info(
-            "Canal d'envoi e-mail : %s (BREVO_API_KEY %s)",
-            "brevo" if settings.BREVO_API_KEY else "smtp",
+            "Canal d'envoi e-mail : %s (MAIL_SERVICE %s, BREVO_API_KEY %s)",
+            "service-mail" if use_service else ("brevo" if settings.BREVO_API_KEY else "smtp"),
+            "configuré" if use_service else "absent ou incomplet",
             "définie" if settings.BREVO_API_KEY else "absente ou vide",
         )
+        # Canal prioritaire : le service d'envoi d'e-mails hébergé sur Vercel (HTTPS)
+        if use_service:
+            return self._send_mail_service(
+                recipient_email=recipient_email,
+                subject=subject,
+                html_content=html_content,
+                plain_text=plain_text,
+            )
+
         # Render bloque les ports SMTP sortants : on privilégie l'API HTTPS de Brevo
         if settings.BREVO_API_KEY:
             return self._send_brevo(
@@ -153,6 +164,53 @@ class EmailService:
                     server.quit()
                 except Exception:
                     pass  # la connexion est déjà fermée
+
+    def _send_mail_service(
+        self,
+        *,
+        recipient_email: str,
+        subject: str,
+        html_content: str,
+        plain_text: str,
+    ) -> bool:
+        """Envoie l'e-mail via le service HTTP maison (Vercel) : POST {URL}/send-email."""
+        url = settings.MAIL_SERVICE_URL.rstrip("/") + "/send-email"
+        payload = json.dumps({
+            "to": recipient_email,
+            "subject": subject,
+            "html": html_content,
+            "text": plain_text,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "x-api-key": settings.MAIL_SERVICE_API_KEY,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            # timeout large : un démarrage à froid sur Vercel peut prendre quelques secondes
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                body = resp.read().decode("utf-8", "replace")
+                logger.info(
+                    "E-mail envoyé via le service mail à %s (HTTP %s) %s",
+                    recipient_email, resp.status, body[:200],
+                )
+                return True
+        except Exception as e:
+            detail = ""
+            if hasattr(e, "read"):
+                try:
+                    detail = " | " + e.read().decode("utf-8", "replace")[:300]
+                except Exception:
+                    pass
+            logger.error(
+                "Échec du service mail pour %s : %s: %s%s",
+                recipient_email, type(e).__name__, e, detail,
+            )
+            return False
 
     def _send_brevo(
         self,
