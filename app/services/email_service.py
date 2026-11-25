@@ -85,6 +85,7 @@ class EmailService:
     ) -> bool:
         """Gère l'envoi réel (API Brevo si configurée, sinon SMTP) ou le fallback sécurisé."""
         # Render bloque les ports SMTP sortants : on privilégie l'API HTTPS de Brevo
+        logger.info("Canal d'envoi e-mail : %s", "brevo" if settings.BREVO_API_KEY else "smtp")
         if settings.BREVO_API_KEY:
             return self._send_brevo(
                 recipient_email=recipient_email,
